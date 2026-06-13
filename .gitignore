@@ -24,3 +24,6 @@ Thumbs.db
 .vscode/
 data/train/instances.json
 data/held_out/instances.json
+
+data/train/instances.json
+data/held_out/instances.json
