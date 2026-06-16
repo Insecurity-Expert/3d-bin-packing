@@ -15,7 +15,7 @@
  * Each item gets a thin dark wireframe edge so boxes pop.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Html } from '@react-three/drei';
 import * as THREE from 'three';
@@ -109,15 +109,45 @@ export default function BinViewer({ result, placements: placementsProp, containe
   const container = result ? result.container  : containerProp;
   const binsUsed  = result ? result.bins_used  : (binsUsedProp || 0);
 
+  const [currentStep, setCurrentStep] = useState(items.length);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  // Sync currentStep when items count changes (e.g. running new optimization or finishing)
+  useEffect(() => {
+    setCurrentStep(items.length);
+  }, [items.length]);
+
+  // Autoplay handler
+  useEffect(() => {
+    if (!isPlaying) return;
+
+    const interval = setInterval(() => {
+      setCurrentStep((prev) => {
+        if (prev >= items.length) {
+          setIsPlaying(false);
+          return prev;
+        }
+        return prev + 1;
+      });
+    }, 500);
+
+    return () => clearInterval(interval);
+  }, [isPlaying, items.length]);
+
+  // Slice items to current playback step
+  const visibleItems = useMemo(() => {
+    return items.slice(0, currentStep);
+  }, [items, currentStep]);
+
   // Group items by bin — hook must come before any early return
   const byBin = useMemo(() => {
     const m = {};
-    for (const it of items) {
+    for (const it of visibleItems) {
       if (!m[it.bin_id]) m[it.bin_id] = [];
       m[it.bin_id].push(it);
     }
     return m;
-  }, [items]);
+  }, [visibleItems]);
 
   if (!container || !items || items.length === 0) return null;
 
@@ -125,13 +155,17 @@ export default function BinViewer({ result, placements: placementsProp, containe
   const BIN_GAP     = L * 0.12;
   const binCount    = Math.max(binsUsed, ...Object.keys(byBin).map(Number)) + 1 || binsUsed;
   const totalWidth  = binCount * L + (binCount - 1) * BIN_GAP;
-  const camDist     = Math.max(totalWidth, H, D) * 1.8;
+  const camDist     = Math.max(totalWidth, H, D) * 1.25;
+
+  const targetX = totalWidth / 2;
+  const targetY = H / 2;
+  const targetZ = D / 2;
 
   return (
     <div style={{ width: '100%', borderRadius: 8, overflow: 'hidden' }}>
-      <div style={{ width: '100%', height: 520, background: '#111827' }}>
+      <div style={{ width: '100%', height: 520, background: '#111827', position: 'relative' }}>
         <Canvas
-          camera={{ position: [totalWidth / 2, H * 1.2, camDist], fov: 45 }}
+          camera={{ position: [targetX, targetY + H * 0.8, targetZ + camDist], fov: 45 }}
           gl={{ antialias: true }}
         >
           <ambientLight intensity={0.65} />
@@ -158,8 +192,77 @@ export default function BinViewer({ result, placements: placementsProp, containe
             );
           })}
 
-          <OrbitControls makeDefault />
+          <OrbitControls makeDefault target={[targetX, targetY, targetZ]} />
         </Canvas>
+
+        {/* Playback Controls Overlay */}
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 16,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'rgba(15, 23, 42, 0.85)',
+            border: '1px solid #334155',
+            borderRadius: 8,
+            padding: '10px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            zIndex: 10,
+            width: '90%',
+            maxWidth: 550,
+            backdropFilter: 'blur(4px)',
+            pointerEvents: 'auto',
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onPointerUp={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onMouseUp={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => {
+              if (currentStep >= items.length) {
+                setCurrentStep(0);
+              }
+              setIsPlaying(prev => !prev);
+            }}
+            style={{
+              background: isPlaying ? '#ef4444' : '#3b82f6',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 4,
+              padding: '6px 12px',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+              minWidth: 70,
+            }}
+          >
+            {isPlaying ? '⏸ Pause' : '▶ Play'}
+          </button>
+
+          <input
+            type="range"
+            min="0"
+            max={items.length}
+            value={currentStep}
+            onChange={(e) => {
+              setCurrentStep(parseInt(e.target.value, 10));
+              setIsPlaying(false);
+            }}
+            style={{
+              flex: 1,
+              cursor: 'pointer',
+              accentColor: '#3b82f6',
+            }}
+          />
+
+          <span style={{ color: '#f1f5f9', fontSize: 12, whiteSpace: 'nowrap', fontWeight: 500 }}>
+            Showing {currentStep} of {items.length}
+          </span>
+        </div>
       </div>
 
       {/* Legend */}
