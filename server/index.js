@@ -5,6 +5,8 @@ const path      = require("path");
 const { spawn } = require("child_process");
 const readline  = require("readline");
 const WebSocket = require("ws");
+const cookieParser = require("cookie-parser");
+const { router: authRouter } = require("./auth");
 
 const app     = express();
 const PORT    = 3001;
@@ -15,6 +17,8 @@ const OPTIMIZER = path.join(__dirname, "..", "optimizer", "main_optimizer.py");
 
 app.use(cors());
 app.use(express.json());
+app.use(cookieParser());
+app.use("/api/auth", authRouter);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WebSocket server (port 3002)
