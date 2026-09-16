@@ -7,6 +7,7 @@ import LogisticsTab from "./components/LogisticsTab";
 import ResultsTab from "./components/ResultsTab";
 import VisualizationTab from "./components/VisualizationTab";
 import RunHistoryTab from "./components/RunHistoryTab";
+import { instancesApi, runsApi } from "./services/api";
 
 
 // ── MAIN SHELL COMPONENT ──────────────────────────────────────────────────────
@@ -80,8 +81,8 @@ export default function Shell() {
 
   // Load instances list
   useEffect(() => {
-    fetch("/api/instances")
-      .then((r) => r.json())
+    instancesApi
+      .getAll()
       .then((data) => {
         const list = data.instances || [];
         setInstances(list);
@@ -100,8 +101,8 @@ export default function Shell() {
       setInstanceItems([]);   // clear preview when nothing is selected
       return;
     }
-    fetch(`/api/instance-details?path=${encodeURIComponent(selected)}`)
-      .then((r) => r.json())
+    instancesApi
+      .getDetails(selected)
       .then((data) => {
         if (data.container) {
           setContainerSpecs({ L: data.container.L, H: data.container.H, D: data.container.D });
@@ -116,9 +117,9 @@ export default function Shell() {
 
   // Fetch Run History
   const fetchRunHistory = useCallback(() => {
-    fetch("/api/auth/runs", { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : []))
-      .then(setRunHistory)
+    runsApi
+      .getHistory()
+      .then((data) => setRunHistory(Array.isArray(data) ? data : []))
       .catch(() => {});
   }, []);
 
@@ -158,21 +159,16 @@ export default function Shell() {
         setFinalResult(msg);
         setRunning(false);
         // Persist run details
-        fetch("/api/auth/runs", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            strategy: strategy,
-            instance: isCustomized ? "custom.json" : msg.instance.split(/[\\/]/).pop(),
-            n_items: msg.n_items,
-            space_util: msg.metrics?.M1_space_utilization_pct || msg.volume_util_pct,
-            dissipation: msg.dissipation,
-            runtime_s: msg.runtime_s,
-            bins_used: msg.bins_used,
-            placements: msg.items,
-            container: msg.container
-          })
+        runsApi.saveRun({
+          strategy: strategy,
+          instance: isCustomized ? "custom.json" : msg.instance.split(/[\\/]/).pop(),
+          n_items: msg.n_items,
+          space_util: msg.metrics?.M1_space_utilization_pct || msg.volume_util_pct,
+          dissipation: msg.dissipation,
+          runtime_s: msg.runtime_s,
+          bins_used: msg.bins_used,
+          placements: msg.items,
+          container: msg.container
         }).then(() => fetchRunHistory()).catch(() => {});
         break;
 
@@ -253,20 +249,15 @@ export default function Shell() {
     setFinalResult(null);
     setError(null);
 
-  let runPath = selected;
+    let runPath = selected;
 
-  // Use custom path if user added manual items OR if no OR-Library instance is selected
-  if (isCustomized || !selected) {
-    try {
-      const res = await fetch("/api/instances/custom", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            container: containerSpecs,
-            items: itemsList
-          })
+    // Use custom path if user added manual items OR if no OR-Library instance is selected
+    if (isCustomized || !selected) {
+      try {
+        const data = await instancesApi.saveCustom({
+          container: containerSpecs,
+          items: itemsList
         });
-        const data = await res.json();
         if (data.path) {
           runPath = data.path;
         } else {
@@ -279,9 +270,9 @@ export default function Shell() {
       }
     }
 
-    wsRef.current.send(JSON.stringify({ action: "run", instancePath: runPath, maxTime }));
+    wsRef.current.send(JSON.stringify({ action: "run", instancePath: runPath, maxTime, strategy }));
     setActiveTab("visualization");
-  }, [selected, running, wsConnected, maxTime, isCustomized, containerSpecs, itemsList]);
+  }, [selected, running, wsConnected, maxTime, isCustomized, containerSpecs, itemsList, strategy]);
 
   const handleStopRun = useCallback(() => {
     wsRef.current?.send(JSON.stringify({ action: "stop" }));

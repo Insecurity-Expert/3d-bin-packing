@@ -23,6 +23,8 @@ import tracemalloc
 
 from instance_reader import load_instance
 from hd_gwo import HDGWO
+from thesis_algorithms import StandaloneDGWO, StandaloneMOGWO, SequentialHybrid, RepairBasedHybrid
+from thesis_metrics import evaluate_constraints
 from webapp_metrics import (assign_weights, compute_weight_capacity,
                             space_utilization, constraint_satisfaction)
 
@@ -41,6 +43,8 @@ def main():
                         help="Emit JSON progress lines to stdout (for batch/WebSocket mode)")
     parser.add_argument("--max-time", type=int, default=90,
                     help="Wall-clock time limit in seconds (default 90)")
+    parser.add_argument("--strategy", choices=["HDGWO", "DGWO", "MOGWO", "SEQ", "REP"], 
+                    default="HDGWO", help="Optimization strategy to run")
     args = parser.parse_args()
 
     streaming = args.stream
@@ -92,18 +96,35 @@ def main():
     # ── Run optimizer ──────────────────────────────────────────────────────────
     tracemalloc.start()
     _start_time = time.perf_counter()
-    optimizer = HDGWO(
-        items=items,
-        container=container,
-        pop_size=pop_size,
-        max_iter=max_iter,
-        T0=500.0,
-        delta_T=25.0,
-        freeze=10.0,
-        max_process=max_process,
-        max_time=args.max_time,
-        stream_cb=emit if streaming else None,
-    )
+    if args.strategy == "HDGWO":
+        optimizer = HDGWO(
+            items=items,
+            container=container,
+            pop_size=pop_size,
+            max_iter=max_iter,
+            T0=500.0,
+            delta_T=25.0,
+            freeze=10.0,
+            max_process=max_process,
+            max_time=args.max_time,
+            stream_cb=emit if streaming else None,
+        )
+    else:
+        # Override to 30 pop and 500 iter for thesis architectures as per standard
+        opt_class = {
+            "DGWO": StandaloneDGWO,
+            "MOGWO": StandaloneMOGWO,
+            "SEQ": SequentialHybrid,
+            "REP": RepairBasedHybrid
+        }[args.strategy]
+        optimizer = opt_class(
+            items=items,
+            container=container,
+            pop_size=30,
+            max_iter=500,
+            lambda_penalty=0.10,
+            stream_cb=emit if streaming else None,
+        )
 
     best = optimizer.run()
     exec_time_ms = (time.perf_counter() - _start_time) * 1000.0   # M-3
@@ -138,8 +159,12 @@ def main():
 
     # ── Thesis metrics (M-1 .. M-5) ────────────────────────────────────────────
     su_pct = space_utilization(best.placements, container, best.n_bins)   # M-1
-    csr_pct, csr_detail = constraint_satisfaction(                         # M-2
-        best.placements, items, container, weight_cap)
+    if args.strategy == "HDGWO":
+        csr_pct, csr_detail = constraint_satisfaction(
+            best.placements, items, container, weight_cap)
+    else:
+        csr_pct, csr_detail = evaluate_constraints(best.placements, items)
+
 
     metrics = {
         "M1_space_utilization_pct":      round(su_pct, 2),
@@ -157,8 +182,8 @@ def main():
         "bins_used":       best.n_bins,
         "lower_bound":     lb,
         "gap_pct":         round((best.n_bins - lb) / max(lb, 1) * 100, 2),
-        "dissipation":     round(best.dissipation, 6),
-        "composite_score": round(best.composite,   6),
+        "dissipation":     round(getattr(best, 'dissipation', 0.0), 6),
+        "composite_score": round(getattr(best, 'composite', getattr(best, 'scalar_fitness', 0.0)), 6),
         "volume_util_pct": vol_util_pct,
         "runtime_s":       round(exec_time_ms / 1000.0, 2),
         "container":       container,

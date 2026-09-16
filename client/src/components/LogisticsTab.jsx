@@ -245,7 +245,7 @@ export default function LogisticsTab({
                   Hybrid strategy
                 </label>
                 <div style={{ display: "flex", gap: "6px" }}>
-                  {["Sequential", "Embedded", "Repair-based"].map((s) => (
+                  {["Sequential", "Repair-based"].map((s) => (
                     <button
                       key={s}
                       onClick={() => setStrategy(s)}

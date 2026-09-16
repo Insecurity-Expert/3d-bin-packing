@@ -1,0 +1,132 @@
+// client/src/services/api.js
+
+/**
+ * Helper to perform fetch requests with JSON parsing and standardized error handling.
+ */
+async function request(endpoint, options = {}) {
+  const defaultHeaders = {
+    "Content-Type": "application/json",
+  };
+
+  const config = {
+    ...options,
+    headers: {
+      ...defaultHeaders,
+      ...(options.headers || {}),
+    },
+    credentials: options.credentials || "include",
+  };
+
+  const response = await fetch(endpoint, config);
+
+  if (!response.ok) {
+    let errorMessage = `Request failed with status ${response.status}`;
+    try {
+      const errorData = await response.json();
+      if (errorData && errorData.error) {
+        errorMessage = errorData.error;
+      }
+    } catch {
+      // Non-JSON error payload
+    }
+    const error = new Error(errorMessage);
+    error.status = response.status;
+    throw error;
+  }
+
+  // If response has no content (204 or empty), return empty object
+  const contentType = response.headers.get("content-type");
+  if (contentType && contentType.includes("application/json")) {
+    return response.json();
+  }
+  return response.text();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Authentication API
+// ─────────────────────────────────────────────────────────────────────────────
+export const authApi = {
+  async getMe() {
+    return request("/api/auth/me");
+  },
+
+  async login(email, password) {
+    return request("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    });
+  },
+
+  async register(payload) {
+    return request("/api/auth/register", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async logout() {
+    return request("/api/auth/logout", {
+      method: "POST",
+    });
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Instances API (OR-Library & Custom instances)
+// ─────────────────────────────────────────────────────────────────────────────
+export const instancesApi = {
+  async getAll() {
+    return request("/api/instances");
+  },
+
+  async getDetails(instancePath) {
+    if (!instancePath) {
+      throw new Error("instancePath is required");
+    }
+    return request(`/api/instance-details?path=${encodeURIComponent(instancePath)}`);
+  },
+
+  async saveCustom({ container, items }) {
+    return request("/api/instances/custom", {
+      method: "POST",
+      body: JSON.stringify({ container, items }),
+    });
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Run History API
+// ─────────────────────────────────────────────────────────────────────────────
+export const runsApi = {
+  async getHistory() {
+    return request("/api/auth/runs");
+  },
+
+  async saveRun(runData) {
+    return request("/api/auth/runs", {
+      method: "POST",
+      body: JSON.stringify(runData),
+    });
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Batch Runner API
+// ─────────────────────────────────────────────────────────────────────────────
+export const batchApi = {
+  async runBatch(selectedSet) {
+    return request("/api/run-batch", {
+      method: "POST",
+      body: JSON.stringify({ set: selectedSet }),
+    });
+  },
+};
+
+const api = {
+  auth: authApi,
+  instances: instancesApi,
+  runs: runsApi,
+  batch: batchApi,
+};
+
+export default api;

@@ -286,7 +286,7 @@ export default function BinViewer({ result, placements: placementsProp, containe
   const totalWidth  = binCount * L + (binCount - 1) * BIN_GAP;
   const camDist     = Math.max(totalWidth, H, D) * 1.8;
 
-  const target = [totalWidth / 2, H / 2, D / 2];
+  const target = useMemo(() => [totalWidth / 2, H / 2, D / 2], [totalWidth, H, D]);
 
   const cameraConfig = useMemo(() => ({
     position: [target[0], target[1] + H * 0.8, target[2] + camDist],

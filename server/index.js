@@ -83,10 +83,16 @@ wss.on("connection", (ws) => {
       }
 
       const maxTime = Math.min(Number(msg.maxTime) || 90, 300);
+      
+      const strategyMap = {
+        "Sequential": "SEQ",
+        "Repair-based": "REP"
+      };
+      const pyStrategy = strategyMap[msg.strategy] || "SEQ";
 
       childProc = spawn(
         "python",
-        [OPTIMIZER, norm, "--stream", "--max-time", String(maxTime)],
+        [OPTIMIZER, norm, "--stream", "--max-time", String(maxTime), "--strategy", pyStrategy],
         { env: { ...process.env, PYTHONMALLOC: "malloc" } }
       );
 

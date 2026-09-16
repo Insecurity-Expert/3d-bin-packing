@@ -9,6 +9,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import BinViewer from './BinViewer';
+import { batchApi } from './services/api';
 
 // ── Colour helpers ────────────────────────────────────────────────────────────
 const UDHC_COLORS = {
@@ -289,13 +290,8 @@ export default function BatchRunner() {
     addLog(`Requesting batch: ${selectedSet}`, 'batch');
   
     try {
-      const res  = await fetch('/api/run-batch', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ set: selectedSet }),
-      });
-      const data = await res.json();
-      if (data.error) {
+      const data = await batchApi.runBatch(selectedSet);
+      if (data && data.error) {
         addLog(`Server error: ${data.error}`, 'error');
         setRunning(false);
       }
